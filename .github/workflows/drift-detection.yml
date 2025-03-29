@@ -1,0 +1,44 @@
+name: Terraform Drift Detection
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # Runs daily at 3 AM
+  workflow_dispatch:
+
+jobs:
+  drift-detection:
+    name: Terraform Drift Detection
+    runs-on: ubuntu-latest
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: latest
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan (Check Drift)
+        id: plan
+        run: terraform plan -detailed-exitcode
+        continue-on-error: true
+
+      - name: Detect Drift and Notify
+        if: steps.plan.outputs.exitcode == 2
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "🚨 Terraform Drift Detected",
+              body: "Terraform drift has been detected. Please review the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.",
+              labels: ["drift", "terraform"]
+            })
